@@ -213,6 +213,10 @@ func applyTemplate(p param, reg *descriptor.Registry) (string, error) {
 	if err := trailerTemplate.Execute(w, tp); err != nil {
 		return "", err
 	}
+
+	if err := registryTemplate.Execute(w, tp); err != nil {
+		return "", err
+	}
 	return w.String(), nil
 }
 
@@ -721,5 +725,42 @@ var (
 	{{end}}
 	{{end}}
 )
+{{end}}`))
+
+	registryTemplate = template.Must(template.New("register").Parse(`
+{{$UseRequestContext := .UseRequestContext}}
+{{range $svc := .Services}}
+var (
+	{{range $m := $svc.Methods}}
+	{{range $b := $m.Bindings}}
+	route_{{$svc.GetName}}_{{$m.GetName}}_{{$b.Index}} = registry.Route{
+		Method: {{$b.HTTPMethod | printf "%q"}}, 
+		Pattern: &registry.Pattern{
+			Version: {{$b.PathTmpl.Version}},
+			Ops: {{$b.PathTmpl.OpCodes | printf "%#v"}}, 
+			Pool: {{$b.PathTmpl.Pool | printf "%#v"}}, 
+			Verb: {{$b.PathTmpl.Verb | printf "%q"}}, 
+			AssumeColonVerb: {{$.AssumeColonVerb}},
+		},
+	}
+	{{end}}
+	{{end}}
+)
+
+var RegistryService{{$svc.GetName}} = registry.Service{
+	Name: _{{$svc.GetName}}_serviceDesc.ServiceName,
+	Methods: []*registry.Method{
+	{{- range $m := $svc.Methods}}
+		&registry.Method{
+			Name: {{$m.GetName | printf "%q"}},
+			Routes: []*registry.Route{
+				{{- range $b := $m.Bindings}}
+				&route_{{$svc.GetName}}_{{$m.GetName}}_{{$b.Index}},
+				{{- end}}
+			},
+		},
+	{{end}}
+	},
+}
 {{end}}`))
 )
