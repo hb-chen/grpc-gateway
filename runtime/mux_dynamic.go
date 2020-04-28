@@ -20,10 +20,24 @@ func (s *ServeMuxDynamic) Handle(meth string, pat Pattern, h HandlerFunc) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.lastMatchWins {
-		s.handlers[meth] = append([]handler{{pat: pat, h: h}}, s.handlers[meth]...)
+	handlers := s.handlers[meth]
+
+	offset := 0
+	newHandlers := make([]handler, 0, len(handlers))
+	for idx, h := range handlers {
+		if h.pat.String() == pat.String() {
+			newHandlers = append(newHandlers, handlers[offset:idx]...)
+			offset = idx + 1
+		}
+	}
+
+	if offset == 0 {
+		s.handlers[meth] = append(handlers, handler{pat: pat, h: h})
 	} else {
-		s.handlers[meth] = append(s.handlers[meth], handler{pat: pat, h: h})
+		newHandlers = append(newHandlers, handlers[offset:]...)
+		newHandlers = append(newHandlers, handler{pat: pat, h: h})
+
+		s.handlers[meth] = newHandlers
 	}
 }
 
