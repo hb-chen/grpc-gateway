@@ -16,6 +16,7 @@ package(default_visibility = ["//visibility:public"])
 # gazelle:exclude stream.pb.gw.go
 # gazelle:exclude use_go_template.pb.gw.go
 # gazelle:exclude wrappers.pb.gw.go
+# gazelle:go_grpc_compilers @io_bazel_rules_go//proto:go_grpc,//protoc-gen-grpc-gateway:go_gen_grpc_gateway
 
 genrule(
     name = "generated_proto",
@@ -30,10 +31,13 @@ proto_library(
         "a_bit_of_everything.proto",
         "echo_service.proto",
         "flow_combination.proto",
+        "generate_unbound_methods.proto",
         "generated_output.proto",
         "non_standard_names.proto",
         "response_body_service.proto",
         "stream.proto",
+        "swagger_merge_a.proto",
+        "swagger_merge_b.proto",
         "unannotated_echo_service.proto",
         "use_go_template.proto",
         "wrappers.proto",
@@ -56,7 +60,7 @@ go_proto_library(
     name = "examplepb_go_proto",
     compilers = [
         "@io_bazel_rules_go//proto:go_grpc",
-        "//protoc-gen-grpc-gateway:go_gen_grpc_gateway",  # keep
+        "//protoc-gen-grpc-gateway:go_gen_grpc_gateway",
     ],
     importpath = "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/examplepb",
     proto = ":examplepb_proto",
@@ -65,14 +69,16 @@ go_proto_library(
         "//examples/internal/proto/sub:go_default_library",
         "//examples/internal/proto/sub2:go_default_library",
         "//protoc-gen-swagger/options:go_default_library",
-        "@com_github_golang_protobuf//descriptor:go_default_library_gen",  # keep
         "@go_googleapis//google/api:annotations_go_proto",
     ],
 )
 
 go_library(
     name = "go_default_library",
-    srcs = ["unannotated_echo_service.pb.gw.go"],
+    srcs = [
+        "generate_unbound_methods.pb.gw.go",
+        "unannotated_echo_service.pb.gw.go",
+    ],
     embed = [":examplepb_go_proto"],
     importpath = "github.com/grpc-ecosystem/grpc-gateway/examples/internal/proto/examplepb",
     deps = [
@@ -83,6 +89,7 @@ go_library(
         "@org_golang_google_grpc//:go_default_library",
         "@org_golang_google_grpc//codes:go_default_library",
         "@org_golang_google_grpc//grpclog:go_default_library",
+        "@org_golang_google_grpc//metadata:go_default_library",
         "@org_golang_google_grpc//status:go_default_library",
     ],
 )

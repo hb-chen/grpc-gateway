@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/grpclog"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -30,6 +31,7 @@ var _ status.Status
 var _ = runtime.String
 var _ = utilities.NewDoubleArray
 var _ = descriptor.ForMessage
+var _ = metadata.Join
 
 var (
 	filter_EchoService_Echo_0 = &utilities.DoubleArray{Encoding: map[string]int{"id": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
@@ -242,7 +244,7 @@ func request_EchoService_Echo_2(ctx context.Context, marshaler runtime.Marshaler
 	if protoReq.Code == nil {
 		protoReq.Code = &SimpleMessage_Lang{}
 	} else if _, ok := protoReq.Code.(*SimpleMessage_Lang); !ok {
-		return nil, metadata, grpc.Errorf(codes.InvalidArgument, "expect type: *SimpleMessage_Lang, but: %t\n", protoReq.Code)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "expect type: *SimpleMessage_Lang, but: %t\n", protoReq.Code)
 	}
 	protoReq.Code.(*SimpleMessage_Lang).Lang, err = runtime.String(val)
 
@@ -303,7 +305,7 @@ func local_request_EchoService_Echo_2(ctx context.Context, marshaler runtime.Mar
 	if protoReq.Code == nil {
 		protoReq.Code = &SimpleMessage_Lang{}
 	} else if _, ok := protoReq.Code.(*SimpleMessage_Lang); !ok {
-		return nil, metadata, grpc.Errorf(codes.InvalidArgument, "expect type: *SimpleMessage_Lang, but: %t\n", protoReq.Code)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "expect type: *SimpleMessage_Lang, but: %t\n", protoReq.Code)
 	}
 	protoReq.Code.(*SimpleMessage_Lang).Lang, err = runtime.String(val)
 
@@ -357,7 +359,7 @@ func request_EchoService_Echo_3(ctx context.Context, marshaler runtime.Marshaler
 	if protoReq.Code == nil {
 		protoReq.Code = &SimpleMessage_LineNum{}
 	} else if _, ok := protoReq.Code.(*SimpleMessage_LineNum); !ok {
-		return nil, metadata, grpc.Errorf(codes.InvalidArgument, "expect type: *SimpleMessage_LineNum, but: %t\n", protoReq.Code)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "expect type: *SimpleMessage_LineNum, but: %t\n", protoReq.Code)
 	}
 	protoReq.Code.(*SimpleMessage_LineNum).LineNum, err = runtime.Int64(val)
 
@@ -418,7 +420,7 @@ func local_request_EchoService_Echo_3(ctx context.Context, marshaler runtime.Mar
 	if protoReq.Code == nil {
 		protoReq.Code = &SimpleMessage_LineNum{}
 	} else if _, ok := protoReq.Code.(*SimpleMessage_LineNum); !ok {
-		return nil, metadata, grpc.Errorf(codes.InvalidArgument, "expect type: *SimpleMessage_LineNum, but: %t\n", protoReq.Code)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "expect type: *SimpleMessage_LineNum, but: %t\n", protoReq.Code)
 	}
 	protoReq.Code.(*SimpleMessage_LineNum).LineNum, err = runtime.Int64(val)
 
@@ -594,11 +596,14 @@ func local_request_EchoService_EchoDelete_0(ctx context.Context, marshaler runti
 // RegisterEchoServiceHandlerServer registers the http handlers for service EchoService to "mux".
 // UnaryRPC     :call EchoServiceServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
+// Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterEchoServiceHandlerFromEndpoint instead.
 func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server EchoServiceServer) error {
 
 	mux.Handle("POST", pattern_EchoService_Echo_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req)
 		if err != nil {
@@ -606,6 +611,7 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			return
 		}
 		resp, md, err := local_request_EchoService_Echo_0(rctx, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
@@ -619,6 +625,8 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 	mux.Handle("GET", pattern_EchoService_Echo_1, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req)
 		if err != nil {
@@ -626,6 +634,7 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			return
 		}
 		resp, md, err := local_request_EchoService_Echo_1(rctx, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
@@ -639,6 +648,8 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 	mux.Handle("GET", pattern_EchoService_Echo_2, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req)
 		if err != nil {
@@ -646,6 +657,7 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			return
 		}
 		resp, md, err := local_request_EchoService_Echo_2(rctx, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
@@ -659,6 +671,8 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 	mux.Handle("GET", pattern_EchoService_Echo_3, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req)
 		if err != nil {
@@ -666,6 +680,7 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			return
 		}
 		resp, md, err := local_request_EchoService_Echo_3(rctx, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
@@ -679,6 +694,8 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 	mux.Handle("GET", pattern_EchoService_Echo_4, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req)
 		if err != nil {
@@ -686,6 +703,7 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			return
 		}
 		resp, md, err := local_request_EchoService_Echo_4(rctx, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
@@ -699,6 +717,8 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 	mux.Handle("POST", pattern_EchoService_EchoBody_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req)
 		if err != nil {
@@ -706,6 +726,7 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			return
 		}
 		resp, md, err := local_request_EchoService_EchoBody_0(rctx, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
@@ -719,6 +740,8 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 	mux.Handle("DELETE", pattern_EchoService_EchoDelete_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req)
 		if err != nil {
@@ -726,6 +749,7 @@ func RegisterEchoServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			return
 		}
 		resp, md, err := local_request_EchoService_EchoDelete_0(rctx, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)

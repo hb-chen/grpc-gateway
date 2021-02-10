@@ -160,6 +160,27 @@ option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
 			}
 		}
 	}
+	responses: {
+		key: "500";
+		value: {
+			description: "Server error";
+			headers: {
+				key: "X-Correlation-Id"
+				value: {
+					description: "Unique event identifier for server requests"
+					type: "string"
+					format: "uuid"
+					default: "\"2438ac3c-37eb-4902-adef-ed16b4431030\""
+					pattern: "^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$"
+				}
+			};
+			schema: {
+				json_schema: {
+					ref: ".grpc.gateway.examples.internal.examplepb.ErrorResponse";
+				}
+			}
+		}
+	}
 	extensions: {
 		key: "x-grpc-gateway-foo";
 		value {
@@ -181,6 +202,31 @@ option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
 	}
 };
 
+message ErrorResponse{
+	string correlationId = 1 [(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+		pattern: "^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$",
+		title: "x-correlation-id",
+		description: "Unique event identifier for server requests",
+		format: "uuid",
+		example: "\"2438ac3c-37eb-4902-adef-ed16b4431030\""
+	}];
+	ErrorObject error = 2;
+}
+
+message ErrorObject{
+	int32 code = 1 [(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+		pattern: "^[0-9]$",
+		title: "code",
+		description: "Response code",
+		format: "integer"
+	}];
+	string message = 2 [(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+		pattern: "^[a-zA-Z0-9]{1, 32}$",
+		title: "message",
+		description: "Response message"
+	}];
+}
+
 
 // Intentionally complicated message type to cover many features of Protobuf.
 message ABitOfEverything {
@@ -194,13 +240,13 @@ message ABitOfEverything {
 			url: "https://github.com/grpc-ecosystem/grpc-gateway";
 			description: "Find out more about ABitOfEverything";
 		}
-		example: { value: '{ "uuid": "0cf361e1-4b44-483d-a159-54dabdf7e814" }' }
+		example_string: "{\"uuid\": \"0cf361e1-4b44-483d-a159-54dabdf7e814\"}"
 	};
 
 	// Nested is nested type.
 	message Nested {
 		option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
-			example: { value: '{ "ok": "TRUE" }' }
+			example_string: "{\"ok\": \"TRUE\"}"
 		};
 		// name is nested field.
 		string name = 1;
@@ -276,7 +322,7 @@ message ABitOfEverything {
 // ABitOfEverythingRepeated is used to validate repeated path parameter functionality
 message ABitOfEverythingRepeated {
 	option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
-		example: { value: '{ "path_repeated_bool_value": [true, true, false, true], "path_repeated_int32_value": [1, 2, 3] }' }
+		example_string: "{\"path_repeated_bool_value\": [true, true, false, true], \"path_repeated_int32_value\": [1, 2, 3]}"
 	};
 
 	// repeated values. they are comma-separated in path
@@ -322,6 +368,47 @@ message UpdateV2Request {
 	google.protobuf.FieldMask update_mask = 2;
 }
 
+// An example resource type from AIP-123 used to test the behavior described in
+// the CreateBookRequest message.
+//
+// See: https://google.aip.dev/123
+message Book {
+	// The resource name of the book.
+	//
+	// Format: `publishers/{publisher}/books/{book}`
+	//
+	// Example: `publishers/1257894000000000000/books/my-book`
+	string name = 1;
+
+	// Output only. The book's ID.
+	string id = 2;
+
+	// Output only. Creation time of the book.
+	google.protobuf.Timestamp create_time = 3;
+}
+
+// A standard Create message from AIP-133 with a user-specified ID.
+// The user-specified ID (the `book_id` field in this example) must become a
+// query parameter in the OpenAPI spec.
+//
+// See: https://google.aip.dev/133#user-specified-ids
+message CreateBookRequest {
+	// The publisher in which to create the book.
+	//
+	// Format: `publishers/{publisher}`
+	//
+	// Example: `publishers/1257894000000000000`
+	string parent = 1;
+
+	// The book to create.
+	Book book = 2;
+
+	// The ID to use for the book.
+	//
+	// This must start with an alphanumeric character.
+	string book_id = 3;
+}
+
 // ABitOfEverything service is used to validate that APIs with complicated
 // proto messages and URL templates are still processed correctly.
 service ABitOfEverythingService {
@@ -346,6 +433,13 @@ service ABitOfEverythingService {
 		option (google.api.http) = {
 			post: "/v1/example/a_bit_of_everything"
 			body: "*"
+		};
+	}
+	// Create a book.
+	rpc CreateBook(CreateBookRequest) returns (Book) {
+		option (google.api.http) = {
+			post: "/v1/{parent=publishers/*}/books"
+			body: "book"
 		};
 	}
 	rpc Lookup(sub2.IdMessage) returns (ABitOfEverything) {
@@ -533,6 +627,16 @@ service ABitOfEverythingService {
 		};
 		option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
 			produces: "application/text"
+		};
+	}
+	rpc CheckExternalPathEnum(pathenum.MessageWithPathEnum) returns (google.protobuf.Empty) {
+		option (google.api.http) = {
+			get: "/v2/{value}:check"
+		};
+	}
+	rpc CheckExternalNestedPathEnum(pathenum.MessageWithNestedPathEnum) returns (google.protobuf.Empty) {
+		option (google.api.http) = {
+			get: "/v2/{value}:check"
 		};
 	}
 }
