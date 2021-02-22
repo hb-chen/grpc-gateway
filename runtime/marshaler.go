@@ -16,7 +16,9 @@ type Marshaler interface {
 	// NewEncoder returns an Encoder which writes bytes sequence into "w".
 	NewEncoder(w io.Writer) Encoder
 	// ContentType returns the Content-Type which this marshaler is responsible for.
-	ContentType() string
+	// The parameter describes the type which is being marshalled, which can sometimes
+	// affect the content type returned.
+	ContentType(v interface{}) string
 }
 
 // Decoder decodes a byte sequence
@@ -43,6 +45,6 @@ func (f EncoderFunc) Encode(v interface{}) error { return f(v) }
 
 // Delimited defines the streaming delimiter.
 type Delimited interface {
-	// Delimiter returns the record seperator for the stream.
+	// Delimiter returns the record separator for the stream.
 	Delimiter() []byte
 }

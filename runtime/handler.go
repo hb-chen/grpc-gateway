@@ -1,19 +1,18 @@
 package runtime
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"net/textproto"
 
-	"context"
-	"github.com/golang/protobuf/proto"
-	"github.com/grpc-ecosystem/grpc-gateway/internal"
+	"google.golang.org/genproto/googleapis/api/httpbody"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/grpclog"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
-
-var errEmptyResponse = errors.New("empty response")
 
 // ForwardResponseStream forwards the stream from gRPC server to REST client.
 func ForwardResponseStream(ctx context.Context, mux *ServeMux, marshaler Marshaler, w http.ResponseWriter, req *http.Request, recv func() (proto.Message, error), opts ...func(context.Context, http.ResponseWriter, proto.Message) error) {
@@ -33,7 +32,6 @@ func ForwardResponseStream(ctx context.Context, mux *ServeMux, marshaler Marshal
 	handleForwardResponseServerMetadata(w, mux, md)
 
 	w.Header().Set("Transfer-Encoding", "chunked")
-	w.Header().Set("Content-Type", marshaler.ContentType())
 	if err := handleForwardResponseOptions(ctx, w, nil, opts); err != nil {
 		HTTPError(ctx, mux, marshaler, w, req, err)
 		return
@@ -61,7 +59,26 @@ func ForwardResponseStream(ctx context.Context, mux *ServeMux, marshaler Marshal
 			return
 		}
 
-		buf, err := marshaler.Marshal(streamChunk(ctx, resp, mux.streamErrorHandler))
+		if !wroteHeader {
+			w.Header().Set("Content-Type", marshaler.ContentType(resp))
+		}
+
+		var buf []byte
+		httpBody, isHTTPBody := resp.(*httpbody.HttpBody)
+		switch {
+		case resp == nil:
+			buf, err = marshaler.Marshal(errorChunk(status.New(codes.Internal, "empty response")))
+		case isHTTPBody:
+			buf = httpBody.GetData()
+		default:
+			result := map[string]interface{}{"result": resp}
+			if rb, ok := resp.(responseBody); ok {
+				result["result"] = rb.XXX_ResponseBody()
+			}
+
+			buf, err = marshaler.Marshal(result)
+		}
+
 		if err != nil {
 			grpclog.Infof("Failed to marshal response chunk: %v", err)
 			handleForwardResponseStreamError(ctx, wroteHeader, marshaler, w, req, mux, err)
@@ -122,13 +139,7 @@ func ForwardResponseMessage(ctx context.Context, mux *ServeMux, marshaler Marsha
 	handleForwardResponseServerMetadata(w, mux, md)
 	handleForwardResponseTrailerHeader(w, md)
 
-	contentType := marshaler.ContentType()
-	// Check marshaler on run time in order to keep backwards compatability
-	// An interface param needs to be added to the ContentType() function on
-	// the Marshal interface to be able to remove this check
-	if httpBodyMarshaler, ok := marshaler.(*HTTPBodyMarshaler); ok {
-		contentType = httpBodyMarshaler.ContentTypeFromMessage(resp)
-	}
+	contentType := marshaler.ContentType(resp)
 	w.Header().Set("Content-Type", contentType)
 
 	if err := handleForwardResponseOptions(ctx, w, resp, opts); err != nil {
@@ -169,11 +180,11 @@ func handleForwardResponseOptions(ctx context.Context, w http.ResponseWriter, re
 }
 
 func handleForwardResponseStreamError(ctx context.Context, wroteHeader bool, marshaler Marshaler, w http.ResponseWriter, req *http.Request, mux *ServeMux, err error) {
-	serr := streamError(ctx, mux.streamErrorHandler, err)
+	st := mux.streamErrorHandler(ctx, err)
 	if !wroteHeader {
-		w.WriteHeader(int(serr.HttpCode))
+		w.WriteHeader(HTTPStatusFromCode(st.Code()))
 	}
-	buf, merr := marshaler.Marshal(errorChunk(serr))
+	buf, merr := marshaler.Marshal(errorChunk(st))
 	if merr != nil {
 		grpclog.Infof("Failed to marshal an error: %v", merr)
 		return
@@ -184,26 +195,6 @@ func handleForwardResponseStreamError(ctx context.Context, wroteHeader bool, mar
 	}
 }
 
-// streamChunk returns a chunk in a response stream for the given result. The
-// given errHandler is used to render an error chunk if result is nil.
-func streamChunk(ctx context.Context, result proto.Message, errHandler StreamErrorHandlerFunc) map[string]proto.Message {
-	if result == nil {
-		return errorChunk(streamError(ctx, errHandler, errEmptyResponse))
-	}
-	return map[string]proto.Message{"result": result}
-}
-
-// streamError returns the payload for the final message in a response stream
-// that represents the given err.
-func streamError(ctx context.Context, errHandler StreamErrorHandlerFunc, err error) *StreamError {
-	serr := errHandler(ctx, err)
-	if serr != nil {
-		return serr
-	}
-	// TODO: log about misbehaving stream error handler?
-	return DefaultHTTPStreamErrorHandler(ctx, err)
-}
-
-func errorChunk(err *StreamError) map[string]proto.Message {
-	return map[string]proto.Message{"error": (*internal.StreamError)(err)}
+func errorChunk(st *status.Status) map[string]proto.Message {
+	return map[string]proto.Message{"error": st.Proto()}
 }

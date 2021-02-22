@@ -1,21 +1,29 @@
 package runtime_test
 
 import (
+	"context"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"context"
-	"github.com/golang/protobuf/proto"
-	pb "github.com/grpc-ecosystem/grpc-gateway/examples/proto/examplepb"
-	"github.com/grpc-ecosystem/grpc-gateway/internal"
-	"github.com/grpc-ecosystem/grpc-gateway/runtime"
-	"google.golang.org/grpc"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	pb "github.com/grpc-ecosystem/grpc-gateway/v2/runtime/internal/examplepb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
+
+type fakeReponseBodyWrapper struct {
+	proto.Message
+}
+
+// XXX_ResponseBody returns id of SimpleMessage
+func (r fakeReponseBodyWrapper) XXX_ResponseBody() interface{} {
+	resp := r.Message.(*pb.SimpleMessage)
+	return resp.Id
+}
 
 func TestForwardResponseStream(t *testing.T) {
 	type msg struct {
@@ -23,9 +31,10 @@ func TestForwardResponseStream(t *testing.T) {
 		err error
 	}
 	tests := []struct {
-		name       string
-		msgs       []msg
-		statusCode int
+		name         string
+		msgs         []msg
+		statusCode   int
+		responseBody bool
 	}{{
 		name: "encoding",
 		msgs: []msg{
@@ -38,15 +47,31 @@ func TestForwardResponseStream(t *testing.T) {
 		statusCode: http.StatusOK,
 	}, {
 		name:       "error",
-		msgs:       []msg{{nil, grpc.Errorf(codes.OutOfRange, "400")}},
+		msgs:       []msg{{nil, status.Errorf(codes.OutOfRange, "400")}},
 		statusCode: http.StatusBadRequest,
 	}, {
 		name: "stream_error",
 		msgs: []msg{
 			{&pb.SimpleMessage{Id: "One"}, nil},
-			{nil, grpc.Errorf(codes.OutOfRange, "400")},
+			{nil, status.Errorf(codes.OutOfRange, "400")},
 		},
 		statusCode: http.StatusOK,
+	}, {
+		name: "response body stream case",
+		msgs: []msg{
+			{fakeReponseBodyWrapper{&pb.SimpleMessage{Id: "One"}}, nil},
+			{fakeReponseBodyWrapper{&pb.SimpleMessage{Id: "Two"}}, nil},
+		},
+		responseBody: true,
+		statusCode:   http.StatusOK,
+	}, {
+		name: "response body stream error case",
+		msgs: []msg{
+			{fakeReponseBodyWrapper{&pb.SimpleMessage{Id: "One"}}, nil},
+			{nil, status.Errorf(codes.OutOfRange, "400")},
+		},
+		responseBody: true,
+		statusCode:   http.StatusOK,
 	}}
 
 	newTestRecv := func(t *testing.T, msgs []msg) func() (proto.Message, error) {
@@ -92,16 +117,9 @@ func TestForwardResponseStream(t *testing.T) {
 						// Skip non-stream errors
 						t.Skip("checking error encodings")
 					}
-					st, _ := status.FromError(msg.err)
-					httpCode := runtime.HTTPStatusFromCode(st.Code())
+					st := status.Convert(msg.err)
 					b, err := marshaler.Marshal(map[string]proto.Message{
-						"error": &internal.StreamError{
-							GrpcCode:   int32(st.Code()),
-							HttpCode:   int32(httpCode),
-							Message:    st.Message(),
-							HttpStatus: http.StatusText(httpCode),
-							Details:    st.Proto().GetDetails(),
-						},
+						"error": st.Proto(),
 					})
 					if err != nil {
 						t.Errorf("marshaler.Marshal() failed %v", err)
@@ -113,7 +131,22 @@ func TestForwardResponseStream(t *testing.T) {
 
 					return
 				}
-				b, err := marshaler.Marshal(map[string]proto.Message{"result": msg.pb})
+
+				var b []byte
+
+				if tt.responseBody {
+					// responseBody interface is in runtime package and test is in runtime_test package. hence can't use responseBody directly
+					// So type casting to fakeReponseBodyWrapper struct to verify the data.
+					rb, ok := msg.pb.(fakeReponseBodyWrapper)
+					if !ok {
+						t.Errorf("stream responseBody failed %v", err)
+					}
+
+					b, err = marshaler.Marshal(map[string]interface{}{"result": rb.XXX_ResponseBody()})
+				} else {
+					b, err = marshaler.Marshal(map[string]interface{}{"result": msg.pb})
+				}
+
 				if err != nil {
 					t.Errorf("marshaler.Marshal() failed %v", err)
 				}
@@ -137,7 +170,7 @@ func (c *CustomMarshaler) Marshal(v interface{}) ([]byte, error)      { return c
 func (c *CustomMarshaler) Unmarshal(data []byte, v interface{}) error { return c.m.Unmarshal(data, v) }
 func (c *CustomMarshaler) NewDecoder(r io.Reader) runtime.Decoder     { return c.m.NewDecoder(r) }
 func (c *CustomMarshaler) NewEncoder(w io.Writer) runtime.Encoder     { return c.m.NewEncoder(w) }
-func (c *CustomMarshaler) ContentType() string                        { return c.m.ContentType() }
+func (c *CustomMarshaler) ContentType(v interface{}) string           { return "Custom-Content-Type" }
 
 func TestForwardResponseStreamCustomMarshaler(t *testing.T) {
 	type msg struct {
@@ -160,13 +193,13 @@ func TestForwardResponseStreamCustomMarshaler(t *testing.T) {
 		statusCode: http.StatusOK,
 	}, {
 		name:       "error",
-		msgs:       []msg{{nil, grpc.Errorf(codes.OutOfRange, "400")}},
+		msgs:       []msg{{nil, status.Errorf(codes.OutOfRange, "400")}},
 		statusCode: http.StatusBadRequest,
 	}, {
 		name: "stream_error",
 		msgs: []msg{
 			{&pb.SimpleMessage{Id: "One"}, nil},
-			{nil, grpc.Errorf(codes.OutOfRange, "400")},
+			{nil, status.Errorf(codes.OutOfRange, "400")},
 		},
 		statusCode: http.StatusOK,
 	}}
@@ -222,6 +255,59 @@ func TestForwardResponseStreamCustomMarshaler(t *testing.T) {
 
 			if string(body) != string(want) {
 				t.Errorf("ForwardResponseStream() = \"%s\" want \"%s\"", body, want)
+			}
+		})
+	}
+}
+
+func TestForwardResponseMessage(t *testing.T) {
+	msg := &pb.SimpleMessage{Id: "One"}
+	tests := []struct {
+		name        string
+		marshaler   runtime.Marshaler
+		contentType string
+	}{{
+		name:        "standard marshaler",
+		marshaler:   &runtime.JSONPb{},
+		contentType: "application/json",
+	}, {
+		name:        "httpbody marshaler",
+		marshaler:   &runtime.HTTPBodyMarshaler{&runtime.JSONPb{}},
+		contentType: "application/json",
+	}, {
+		name:        "custom marshaler",
+		marshaler:   &CustomMarshaler{&runtime.JSONPb{}},
+		contentType: "Custom-Content-Type",
+	}}
+
+	ctx := runtime.NewServerMetadataContext(context.Background(), runtime.ServerMetadata{})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "http://example.com/foo", nil)
+			resp := httptest.NewRecorder()
+
+			runtime.ForwardResponseMessage(ctx, runtime.NewServeMux(), tt.marshaler, resp, req, msg)
+
+			w := resp.Result()
+			if w.StatusCode != http.StatusOK {
+				t.Errorf("StatusCode %d want %d", w.StatusCode, http.StatusOK)
+			}
+			if h := w.Header.Get("Content-Type"); h != tt.contentType {
+				t.Errorf("Content-Type %v want %v", h, tt.contentType)
+			}
+			body, err := ioutil.ReadAll(w.Body)
+			if err != nil {
+				t.Errorf("Failed to read response body with %v", err)
+			}
+			w.Body.Close()
+
+			want, err := tt.marshaler.Marshal(msg)
+			if err != nil {
+				t.Errorf("marshaler.Marshal() failed %v", err)
+			}
+
+			if string(body) != string(want) {
+				t.Errorf("ForwardResponseMessage() = \"%s\" want \"%s\"", body, want)
 			}
 		})
 	}
