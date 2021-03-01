@@ -1049,14 +1049,14 @@ def go_repositories():
     go_repository(
         name = "org_golang_google_genproto",
         importpath = "google.golang.org/genproto",
-        sum = "h1:zTeTu5p/EXQSqNJboHUw32wdNFYQTT9vSc+ibSpCoLk=",
-        version = "v0.0.0-20210219173056-d891e3cb3b5b",
+        sum = "h1:bXUwz2WkXXrXgiLxww3vWmoSHLOGv4ipdPdTvKymcKw=",
+        version = "v0.0.0-20210224155714-063164c882e6",
     )
     go_repository(
         name = "org_golang_google_grpc",
         importpath = "google.golang.org/grpc",
-        sum = "h1:TwIQcH3es+MojMVojxxfQ3l3OF2KzlRxML2xZq0kRo8=",
-        version = "v1.35.0",
+        sum = "h1:o1bcQ6imQMIOpdrO3SWf2z5RV72WbDwdXuK0MDlc8As=",
+        version = "v1.36.0",
     )
 
     go_repository(
